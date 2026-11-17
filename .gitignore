@@ -6,3 +6,5 @@
 __pycache__/
 *.do
 *.py
+/C0b_micro_table.m
+/C2e_estimate_check.m
