@@ -1,104 +1,157 @@
 # BLP Demand Estimation in MATLAB
 
-This repository estimates demand for electric and gasoline vehicles using product-level sales and characteristics by geographic market and year. It includes a baseline logit estimated by OLS and 2SLS, a random-coefficients logit estimated by two-step GMM, and post-estimation calculations for elasticities, marginal costs, and markups.
+**Authors:** Hyuk-soo Kwon and Alfred Yuan  
+**Date:** November 17, 2026
+
+**Description:** This repository contain the whole workflow for BLP demand estimation in MATLAB, using vehicle attribute data at market level and income relevant micro moment data. The code was built from Hyuk-soo Kwon's job market paper code, and revised by his predoc Alfred Yuan.
 
 ## Requirements
 
-- MATLAB with support for `parquetread`, `readtable`, and `readcell`.
 - Statistics and Machine Learning Toolbox for functions such as `norminv` and `tcdf`.
 - Optimization Toolbox for `fmincon` and `checkGradients`.
-- Parallel Computing Toolbox for the local worker pool and market-level parallel computations. Set `n_workers` in [C2a_blp_estimation.m](C2a_blp_estimation.m) to a value supported by your local MATLAB profile. The script currently requests 10 workers.
+- Parallel Computing Toolbox for the local worker pool and market-level parallel computations.
+- **This code is built for our current project only, so you need to change all pathes setup according to your environment.**
 
-## Data and directory layout
-
-The input data are stored separately. [functions/set_data_path.m](functions/set_data_path.m) resolves the project directory from the location of the code. To use its default paths, clone the repository into `codes/demand_estimation` inside your project directory.
+## Directory layout
 
 ```text
-<project>/
-├── codes/
-│   └── demand_estimation/              # This repository
-└── data/
-    ├── final_estimation_data/
-    │   └── demand/
-    │       └── df.parquet              # Product-market input
-    └── outputs/
-        └── demand/
-            ├── OutData/                # Generated MATLAB files
-            └── Log/                    # MATLAB diary logs
+demand_estimation/
+├── C0_generate_data.m
+├── C1_simple_logit.m
+├── C2a_blp_estimation.m
+├── C2b_blp_results.m
+├── C2c_gradient_check.m
+├── econometrics_toolbox/
+│   ├── CC.m
+│   ├── aggregate.m
+│   ├── demean.m
+│   ├── dummify.m
+│   ├── gmm_regress.m
+│   ├── gmm_weight.m
+│   ├── halton_draws.m
+│   ├── indep_columns.m
+│   ├── iv_regress.m
+│   ├── ols.m
+│   └── simple_ols.m
+└── functions/
+    ├── F0_objective_fixed_mval.m
+    ├── F1_gmm_objective.m
+    ├── F2_mean_value.m
+    ├── F3_mu_ij.m
+    ├── F4a_IndShr.m
+    ├── F4b_IndShr_all.m
+    ├── F5a_IncShr.m
+    ├── F5b_cov_micro.m
+    ├── F6a_macro_grad.m
+    ├── F6b_micro_grad.m
+    ├── F7a_function_values.m
+    ├── F7b_jacobian.m
+    ├── F7c_variance.m
+    ├── F8a_dSdP.m
+    ├── F8b_elasticity.m
+    ├── F8c_mc.m
+    └── set_data_path.m
 ```
 
-`df.parquet` contains vehicle sales, market and product identifiers, prices, vehicle characteristics, and variables used to construct the instruments. The `VarMap` and `Spec` sections in [C0_generate_data.m](C0_generate_data.m) define the expected source column names and the model specification.
+## How to use this code
 
-The data preparation script also reads the following inputs from `<Dropbox root>/GS_Network/Data/final_estimation_data/demand/`.
+1. Clone this repository and setup all the pathes based on your own environment.
+
+2. Change/Rewrite C0 to fit with your own data structure and variable names.
+
+3. Run the scripts in this order.
+
+   ```matlab
+   C0_generate_data
+   C1_simple_logit
+   C2a_blp_estimation
+   C2b_blp_results
+   ```
+
+   `C0_generate_data` prepares the estimation dataset. `C1_simple_logit` runs the baseline logit and is optional for BLP estimation. `C2a_blp_estimation` runs the two-step GMM estimator, and `C2b_blp_results` reports the estimates and computes elasticities and implied marginal costs.
+
+To compare the analytical GMM gradient with central finite differences, run `C2c_gradient_check` after generating `Data.mat`.
+
+
+# Description of each scripts
+## C-series scripts
+
+C-series scipts are the main files responsible for data generation, estimation and post-estimation alalysis. Usually, you will need to revise these files to adjust to your data structure.
+
+- [C0_generate_data.m](C0_generate_data.m):  
+  C0 mereges different dataset and generates the data files for subsequent estimation. It includes data import, variable mapping, specificaiton setup, market share generation, differentiation IV (GH IV) generation, micro moment data import, and household income simulation.  
+  Usually, you will need to completely rewrite this file to suit with your own dataset, you can treat this file as reference.
+- [C1_simple_logit.m](C1_simple_logit.m):  
+  C1 estimates the simple logit using OLS and 2SLS. Given that you can simply replicate these results using stata or python, I stongly suggest you compare its results with C1's result, their results should be identical.
+- [C2a_blp_estimation.m](C2a_blp_estimation.m):  
+  C2 is the main BLP estimation file, estimating the random-coefficients logit by two-step GMM using both macro and micro moments.   
+  You can adjust the following things based on your needs: the number of starting points, the number of workers (for paralleling computation), the starting points' bound and dimension (depending on the specificaiton). The rest part has been setup already.
+
+- [C2b_blp_results.m](C2b_blp_results.m):  
+ C2b reads the saved estimates, reports first and second stage estimates, and calculate the elastisity, markup, supplier side cost, and learner index.
+- [C2c_gradient_check.m](C2c_gradient_check.m):  
+ C2c evaluates the analytical GMM gradient and a central finite-difference approximation at the same parameter vector based on the results of C0. This file can tell whether your analytical GMM gradient is correctly calculated. I strongly suggest running this before C2b to check the gradient calculation. 
+
+## Functions
+
+The `Functions` folder contains all the supporting fuctions for our main BLP estimation. Theoritically, all files, except F3 and F6a, do not need to be changed when you try different specifications, you can use those funtions directly.
+
+### GMM objective
+
+- [F0_objective_fixed_mval.m](functions/F0_objective_fixed_mval.m):  
+F0 evaluates the GMM objective and its gradient using caller-supplied starting values for the mean-utility inversion. It serves for the gradient check in C2c.
+- [F1_gmm_objective.m](functions/F1_gmm_objective.m):  
+ F1 utilizes and combines all the other functions' results to calculate objective function value and analytical gradient.
+
+### Utility, choice probabilities, and micro moments
+
+- [F2_mean_value.m](functions/F2_mean_value.m):  
+ F2 recovers mean utilities by contraction mapping, in parallel across markets. I use a "SQUAREM" method to accelerate the contraction mapping here.
+- [F3_mu_ij.m](functions/F3_mu_ij.m):  
+ F3 specifies price coefficient that you use and calculate the corresponding price term in utility. I have included mutiple different price coefficient specifications, you can choose / write the one works for you best.
+- [F4a_IndShr.m](functions/F4a_IndShr.m):  
+  F4a computes household-level product choice probabilities in one market, I used the log-sum method to avoid the overflow problem.
+- [F4b_IndShr_all.m](functions/F4b_IndShr_all.m):  
+  F4b applies that calculation across markets and stacks the probabilities in product-row order.
+- [F5a_IncShr.m](functions/F5a_IncShr.m):  
+ F5a aggregates purchase probabilities into predicted shares of vehicle buyers by income group and year. 
+- [F5b_cov_micro.m](functions/F5b_cov_micro.m):  
+  F5b constructs the multinomial covariance matrix for the survey shares using purchaser shares and annual survey sample sizes.
+
+### Derivatives and inference
+
+- [F6a_macro_grad.m](functions/F6a_macro_grad.m):  
+ F6a uses market-level share derivatives to differentiate the inverted mean utilities and demand residuals with respect to the nonlinear parameters. Please notice that, when you change the price coefficient specification in F3, the F6a also needs to be changed accordingly.
+- [F6b_micro_grad.m](functions/F6b_micro_grad.m):  
+ F6b differentiates the buyer income-share moments.
+- [F7a_function_values.m](functions/F7a_function_values.m) evaluates the fitted moments, residuals, GMM criterion, and choice probabilities at the supplied estimates. [F7b_jacobian.m](functions/F7b_jacobian.m) constructs the moment Jacobian, and [F7c_variance.m](functions/F7c_variance.m) uses it with the moment covariance and GMM weights to compute the parameter covariance matrix.
+
+### Elasticities and marginal costs
+
+- [F8a_dSdP.m](functions/F8a_dSdP.m):  
+ F8a computes within-market derivatives of product shares with respect to own and rival product prices.
+- [F8b_elasticity.m](functions/F8b_elasticity.m):  
+ F8b aggregates market-level derivatives to national model-year quantities and calculates own- and cross-price elasticities.
+- [F8c_mc.m](functions/F8c_mc.m):  
+ F8c recovers model-year marginal costs from multiproduct Bertrand first-order conditions using sales, demand derivatives, firm ownership, and tax wedges.
+
+### Path configuration
+
+- [set_data_path.m](functions/set_data_path.m) resolves the local data, output, and log directories and locates auxiliary inputs in Dropbox. Set `DROPBOX_ROOT` to specify a custom Dropbox root.
+
+## Econometrics toolbox
+These functions are the econometrics relevant toolbox including demean, GMM, OLS, 2SLS, Halton draws and so on. You can use this toolbox directly without further adjustments.
 
 | File | Purpose |
 | --- | --- |
-| `Household Size.xlsx` | Household size used to construct the potential market size. The script reads the `Household Size` sheet. |
-| `IncDist_GeoMarket.xlsx` | Income distribution inputs used to simulate household incomes. The script reads the `urban` sheet. |
-| `micro moments.xlsx` | Survey buyer shares by income group and year, with survey sample sizes. The main script reads the `hyuksoo split 5g` sheet. |
-| `National_level_deflator.xlsx` | Annual national deflator series read during micro-moment preparation. The active income-group assignment uses the sheet's nominal cutoffs directly. |
-
-The path helper searches common Dropbox locations. For a custom installation, set the environment variable in MATLAB before running the scripts.
-
-```matlab
-setenv('DROPBOX_ROOT', '/path/to/Dropbox')
-```
-
-The helper checks that both the local data directory and the Dropbox input directory exist, even for scripts that load saved estimates. Adjust the helper if your data are stored in a different layout.
-
-## Estimation workflow
-
-Open the checkout folder in MATLAB and run the following scripts in order.
-
-```matlab
-C0_generate_data
-C1_simple_logit
-C2a_blp_estimation
-C2b_blp_results
-```
-
-| Script | Reads | What it does and writes |
-| --- | --- | --- |
-| [C0_generate_data.m](C0_generate_data.m) | Product data and auxiliary spreadsheets | Builds product and outside shares, prepares fixed effects and instruments, generates market-specific Halton draws for household incomes and tastes, and aligns survey moments with the estimation sample. Writes `Data.mat` and `C0_generate_data_log.txt`. |
-| [C1_simple_logit.m](C1_simple_logit.m) | `Data.mat` | Runs OLS and 2SLS on the simple-logit mean utility, with market-clustered standard errors. Reports a price first-stage regression and writes `SimpleLogit.mat` and `C1_simple_logit_log.txt`. |
-| [C2a_blp_estimation.m](C2a_blp_estimation.m) | `Data.mat` | Fits the random-coefficients model by two-step GMM. Writes the first-step estimates to `GMM_fst_stage.mat`, the second-step estimates to `Main.mat`, and the working mean-utility cache to `CL_Mvalold.mat`. |
-| [C2b_blp_results.m](C2b_blp_results.m) | `Data.mat`, `GMM_fst_stage.mat`, `Main.mat` | Prints parameter estimates, second-step standard errors, and market summaries. Writes `Supply.mat` with model-year elasticities and supply-side results. |
-
-The baseline logit is a benchmark. The BLP estimation script computes its own preliminary logit fit and reads its inputs from `Data.mat`. Rerun data preparation and estimation together after changing the sample, instruments, random coefficients, or survey moments so that post-estimation uses matching files.
-
-### What the BLP estimator fits
-
-For each candidate vector of nonlinear parameters, the estimator solves for mean utilities that reproduce observed shares using a market-by-market contraction mapping. It then concentrates out the linear parameters using the current GMM weighting matrix. The criterion combines instrument-based moments for the demand residuals with survey moments for the income distribution of vehicle buyers. The second GMM step uses a market-clustered covariance estimate for the aggregate moments and a multinomial covariance estimate for the survey shares based on first-step predictions and survey sample sizes.
-
-In the active specification, the random coefficients apply to the constant, gasoline-vehicle indicator, log driving range, log horsepower, and real fuel cost. Price enters through a household-specific coefficient of the form `-exp(alpha1 - alpha2 * log(income) + sigma_p * draw)`. The main specification is set in [C0_generate_data.m](C0_generate_data.m), and the household-specific utility term is implemented in [functions/F3_mu_ij.m](functions/F3_mu_ij.m).
-
-The optimizer uses analytical gradients and supports multiple starting points through `n_iter_1st` and `n_iter_2nd`. Both currently default to one. Each step saves the best solution found among the configured starts. The estimation script uses the same mean-utility cache throughout a run, so run one estimation at a time per output directory.
-
-### Gradient check
-
-Run [C2c_gradient_check.m](C2c_gradient_check.m) after generating `Data.mat` to compare the analytical GMM gradient with central finite differences. It evaluates both derivatives using a common set of initial mean utilities and prints the per-parameter differences. This check is useful after editing the utility specification, moment definitions, or derivative code.
-
-## Output files
-
-`Data.mat` contains five structures that are shared by estimation, diagnostics, and post-estimation.
-
-| Structure | Contents |
-| --- | --- |
-| `Cst` | Dimensions, market indices, product and firm identifiers, sales, and contraction settings. |
-| `YMat` | Observed product shares, market sales totals, and initial mean utilities. |
-| `XMat` | Product characteristics, prices, regressors, and instruments. |
-| `MuMat` | Simulated household taste and income draws and their income-group assignments. |
-| `MicroMom` | Survey buyer shares, survey years, and sample sizes. |
-
-In `Supply.mat`, `ElasMat` contains price elasticities aggregated to the national model-year level. `Supply` contains model-year quantities, prices, and own-price elasticities, along with marginal costs recovered under multiproduct Bertrand pricing using firm ownership and tax wedges. It also records markups and Lerner indices.
-
-## Code reference
-
-| Files | Role |
-| --- | --- |
-| `functions/F0_*`, `functions/F1_*` | GMM objective and gradient. `F0` uses fixed initial mean utilities for derivative checks. `F1` reads and updates the mean-utility cache during estimation. |
-| `functions/F2_*`, `functions/F3_*`, `functions/F4*` | Mean-utility inversion, heterogeneous utility, and individual choice probabilities. |
-| `functions/F5*`, `functions/F6*` | Predicted buyer income shares, micro-moment covariance, and analytical derivatives of the aggregate and micro moments. |
-| `functions/F7*` | Fitted moments, GMM Jacobian, and parameter covariance matrix. |
-| `functions/F8*` | Market-level price derivatives, national model-year elasticities, and implied marginal costs. |
-| `econometrics_toolbox/` | OLS, IV and linear GMM routines, weighting, grouping, fixed-effect demeaning, rank checks, Halton draws, and supporting inference utilities. |
+| [aggregate.m](econometrics_toolbox/aggregate.m) | Groups rows by key and optionally applies a function within each group. |
+| [CC.m](econometrics_toolbox/CC.m) | Implements the Cox–Shi test for moment inequalities. |
+| [demean.m](econometrics_toolbox/demean.m) | Subtracts group means and restores the original row order. |
+| [dummify.m](econometrics_toolbox/dummify.m) | Converts category labels into indicator columns. |
+| [gmm_regress.m](econometrics_toolbox/gmm_regress.m) | Fits a linear GMM regression with optional clustered standard errors. |
+| [gmm_weight.m](econometrics_toolbox/gmm_weight.m) | Builds a GMM weighting matrix from moment contributions, optionally grouped by cluster. |
+| [halton_draws.m](econometrics_toolbox/halton_draws.m) | Generates market-specific blocks of Halton draws with optional scrambling. |
+| [indep_columns.m](econometrics_toolbox/indep_columns.m) | Uses pivoted QR to select numerically independent columns. |
+| [iv_regress.m](econometrics_toolbox/iv_regress.m) | Fits a 2SLS regression with optional clustered standard errors. |
+| [ols.m](econometrics_toolbox/ols.m) | Fits OLS with optional clustered standard errors and reports adjusted R-squared. |
+| [simple_ols.m](econometrics_toolbox/simple_ols.m) | Fits OLS and reports conventional standard errors and test statistics. |
