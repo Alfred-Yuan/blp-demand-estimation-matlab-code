@@ -1,0 +1,6 @@
+.DS_Store
+*.asv
+*.mat
+*.parquet
+*.dta
+__pycache__/
