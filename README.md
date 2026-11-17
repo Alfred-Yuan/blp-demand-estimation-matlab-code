@@ -13,4 +13,4 @@ Run the scripts in this order:
 
 The project data are held separately. The existing MATLAB path helper, `functions/set_data_path.m`, assumes this checkout is placed at `<project>/codes/demand_estimation`. It reads `df.parquet` from `<project>/data/final_estimation_data/demand` and writes output and logs under `<project>/data/outputs/demand`.
 
-The helper looks for the auxiliary spreadsheets in `GS_Network/Data/final_estimation_data/demand` under the Dropbox root. Set the `DROPBOX_ROOT` environment variable if Dropbox is installed outside the default locations. For other directory layouts, update the path helper before running MATLAB. The optional Stata script and Python converter have their own data path settings.
+The helper looks for the auxiliary spreadsheets in `GS_Network/Data/final_estimation_data/demand` under the Dropbox root. Set the `DROPBOX_ROOT` environment variable if Dropbox is installed outside the default locations. For other directory layouts, update the path helper before running MATLAB.

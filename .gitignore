@@ -4,3 +4,5 @@
 *.parquet
 *.dta
 __pycache__/
+*.do
+*.py
